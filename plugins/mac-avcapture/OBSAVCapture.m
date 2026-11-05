@@ -194,6 +194,12 @@ static const UInt32 kMaxFrameRateRangesInDescription = 10;
 {
     AVCaptureDevice *device = [AVCaptureDevice deviceWithUniqueID:uuid];
 
+    NSString *savedUUID = [OBSAVCapture stringFromSettings:self.captureInfo->settings withSetting:@"device"];
+
+    if (!device && [uuid isEqualToString:savedUUID]) {
+        device = [OBSAVCapture deviceFromSettings:self.captureInfo->settings];
+    }
+
     if (self.deviceInput.device || !device) {
         [self stopCaptureSession];
         [self.session removeInput:self.deviceInput];
@@ -205,14 +211,15 @@ static const UInt32 kMaxFrameRateRangesInDescription = 10;
     }
 
     if (!device) {
+        self.deviceUUID = uuid;
+
         if (uuid.length < 1) {
             [self AVCaptureLog:LOG_INFO withFormat:@"No device selected"];
-            self.deviceUUID = uuid;
-            return NO;
         } else {
             [self AVCaptureLog:LOG_WARNING withFormat:@"Unable to initialize device with unique ID '%@'", uuid];
-            return NO;
         }
+
+        return NO;
     }
 
     const char *deviceName = device.localizedName.UTF8String;
@@ -614,7 +621,11 @@ static const UInt32 kMaxFrameRateRangesInDescription = 10;
 
     BOOL updateSession = YES;
 
-    if (![self.deviceUUID isEqualToString:newDeviceUUID]) {
+    BOOL isDeviceChanged = ![self.deviceUUID isEqualToString:newDeviceUUID];
+
+    BOOL isDeviceMissing = !self.deviceInput.device && newDeviceUUID.length > 0;
+
+    if (isDeviceChanged || isDeviceMissing) {
         if (![self switchCaptureDevice:newDeviceUUID withError:error]) {
             obs_source_update_properties(self.captureInfo->source);
             return NO;
@@ -756,6 +767,65 @@ static const UInt32 kMaxFrameRateRangesInDescription = 10;
     }
 
     return result;
+}
+
++ (NSArray<AVCaptureDevice *> *)availableDevices
+{
+    NSArray *deviceTypes;
+    if (@available(macOS 13, *)) {
+        deviceTypes = @[
+            AVCaptureDeviceTypeBuiltInWideAngleCamera, AVCaptureDeviceTypeExternalUnknown,
+            AVCaptureDeviceTypeDeskViewCamera
+        ];
+    } else {
+        deviceTypes = @[AVCaptureDeviceTypeBuiltInWideAngleCamera, AVCaptureDeviceTypeExternalUnknown];
+    }
+
+    AVCaptureDeviceDiscoverySession *videoDiscoverySession =
+        [AVCaptureDeviceDiscoverySession discoverySessionWithDeviceTypes:deviceTypes mediaType:AVMediaTypeVideo
+                                                                position:AVCaptureDevicePositionUnspecified];
+    AVCaptureDeviceDiscoverySession *muxedDiscoverySession =
+        [AVCaptureDeviceDiscoverySession discoverySessionWithDeviceTypes:deviceTypes mediaType:AVMediaTypeMuxed
+                                                                position:AVCaptureDevicePositionUnspecified];
+
+    return [videoDiscoverySession.devices arrayByAddingObjectsFromArray:muxedDiscoverySession.devices];
+}
+
++ (AVCaptureDevice *)deviceFromSettings:(void *)settings
+{
+    NSString *uuid = [OBSAVCapture stringFromSettings:settings withSetting:@"device"];
+
+    if (uuid.length < 1) {
+        return nil;
+    }
+
+    AVCaptureDevice *device = [AVCaptureDevice deviceWithUniqueID:uuid];
+
+    if (device) {
+        return device;
+    }
+
+    NSString *name = [OBSAVCapture stringFromSettings:settings withSetting:@"device_name"];
+
+    if (name.length < 1) {
+        return nil;
+    }
+
+    NSArray<AVCaptureDevice *> *candidates = [[OBSAVCapture availableDevices]
+        filteredArrayUsingPredicate:[NSPredicate predicateWithFormat:@"localizedName == %@", name]];
+
+    if (candidates.count == 1) {
+        device = candidates.firstObject;
+
+        [OBSAVCapture AVCaptureLog:LOG_INFO withFormat:@"Device with unique ID '%@' not found, using '%@' (UUID '%@')",
+                                                       uuid, device.localizedName, device.uniqueID];
+    } else if (candidates.count > 1) {
+        [OBSAVCapture AVCaptureLog:LOG_WARNING
+                        withFormat:@"Device with unique ID '%@' not found and %lu devices share the name '%@'", uuid,
+                                   (unsigned long) candidates.count, name];
+    }
+
+    return device;
 }
 
 + (NSString *)effectsWarningForDevice:(AVCaptureDevice *)device
@@ -1151,7 +1221,14 @@ static const UInt32 kMaxFrameRateRangesInDescription = 10;
     [self AVCaptureLog:LOG_INFO
             withFormat:@"Received connect event for device '%@' (UUID %@)", device.localizedName, device.uniqueID];
 
-    if (![[device uniqueID] isEqualTo:self.deviceUUID]) {
+    BOOL isSelectedDevice = [device.uniqueID isEqualToString:self.deviceUUID];
+
+    if (!isSelectedDevice && !self.deviceInput.device) {
+        AVCaptureDevice *resolvedDevice = [OBSAVCapture deviceFromSettings:self.captureInfo->settings];
+        isSelectedDevice = [device.uniqueID isEqualToString:resolvedDevice.uniqueID];
+    }
+
+    if (!isSelectedDevice) {
         return;
     }
 

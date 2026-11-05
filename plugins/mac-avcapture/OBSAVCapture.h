@@ -185,6 +185,17 @@ typedef struct av_capture_info {
 /// - Returns: New [NSString](https://developer.apple.com/documentation/foundation/nsstring?language=objc) instance created from user setting if setting represented a valid C character pointer.
 + (NSString *)stringFromSettings:(void *)settings withSetting:(NSString *)setting withDefault:(NSString *)defaultValue;
 
+/// Reads all video and muxed capture devices on the system.
+/// - Returns: Array of [AVCaptureDevice](https://developer.apple.com/documentation/avfoundation/avcapturedevice?language=objc) instances of all available capture devices.
++ (NSArray<AVCaptureDevice *> *)availableDevices;
+
+/// Resolves the capture device specified in the user settings.
+/// macOS derives device identifiers from the USB location which can change after reconnect.
+/// If no device is found it makes a best-effort attempt at matching based off of `device_name`. If more than one connected device matches by `device_name` none of them are used.
+/// - Parameter settings: Pointer to user settings struct used by ``libobs``
+/// - Returns: The [AVCaptureDevice](https://developer.apple.com/documentation/avfoundation/avcapturedevice?language=objc) instance corresponding to the device specified in the settings or `nil` if no matching device is found.
++ (AVCaptureDevice *)deviceFromSettings:(void *)settings;
+
 /// Generates an NSString representing the name of the warning to display in the properties window for macOS system effects that are active on a particular `AVCaptureDevice`.
 /// - Parameter device: The [AVCaptureDevice](https://developer.apple.com/documentation/avfoundation/avcapturedevice?language=objc) to generate an effects warning string for.
 /// - Returns: `nil` if there are no effects active on the device. If effects are found, returns a new [NSString](https://developer.apple.com/documentation/foundation/nsstring?language=objc) instance containing the `libobs` key used to retrieve the appropriate localized warning string.

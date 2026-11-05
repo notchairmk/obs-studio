@@ -95,7 +95,7 @@ bool properties_changed_preset(OBSAVCapture *capture, obs_properties_t *properti
             }];
 
         NSString *UUID = [OBSAVCapture stringFromSettings:settings withSetting:@"device"];
-        AVCaptureDevice *device = [AVCaptureDevice deviceWithUniqueID:UUID];
+        AVCaptureDevice *device = [OBSAVCapture deviceFromSettings:settings];
         NSString *currentPreset = [OBSAVCapture stringFromSettings:settings withSetting:@"preset"];
 
         obs_property_list_clear(property);
@@ -194,7 +194,7 @@ bool properties_update_preset(OBSAVCapture *capture, obs_property_t *property, o
         }];
 
     NSString *deviceUUID = [OBSAVCapture stringFromSettings:settings withSetting:@"device"];
-    AVCaptureDevice *device = [AVCaptureDevice deviceWithUniqueID:deviceUUID];
+    AVCaptureDevice *device = [OBSAVCapture deviceFromSettings:settings];
     NSString *currentPreset = [OBSAVCapture stringFromSettings:settings withSetting:@"preset"];
 
     obs_property_list_clear(property);
@@ -230,32 +230,7 @@ bool properties_update_device(OBSAVCapture *capture __unused, obs_property_t *pr
 
     obs_property_list_add_string(property, "", "");
 
-    NSArray *deviceTypes;
-    if (@available(macOS 13, *)) {
-        deviceTypes = @[
-            AVCaptureDeviceTypeBuiltInWideAngleCamera, AVCaptureDeviceTypeExternalUnknown,
-            AVCaptureDeviceTypeDeskViewCamera
-        ];
-    } else {
-        deviceTypes = @[AVCaptureDeviceTypeBuiltInWideAngleCamera, AVCaptureDeviceTypeExternalUnknown];
-    }
-
-    AVCaptureDeviceDiscoverySession *videoDiscoverySession =
-        [AVCaptureDeviceDiscoverySession discoverySessionWithDeviceTypes:deviceTypes mediaType:AVMediaTypeVideo
-                                                                position:AVCaptureDevicePositionUnspecified];
-    AVCaptureDeviceDiscoverySession *muxedDiscoverySession =
-        [AVCaptureDeviceDiscoverySession discoverySessionWithDeviceTypes:deviceTypes mediaType:AVMediaTypeMuxed
-                                                                position:AVCaptureDevicePositionUnspecified];
-
-    for (AVCaptureDevice *device in [videoDiscoverySession devices]) {
-        obs_property_list_add_string(property, device.localizedName.UTF8String, device.uniqueID.UTF8String);
-
-        if (!isDeviceFound && [currentDeviceUUID isEqualToString:device.uniqueID]) {
-            isDeviceFound = YES;
-        }
-    }
-
-    for (AVCaptureDevice *device in [muxedDiscoverySession devices]) {
+    for (AVCaptureDevice *device in [OBSAVCapture availableDevices]) {
         obs_property_list_add_string(property, device.localizedName.UTF8String, device.uniqueID.UTF8String);
 
         if (!isDeviceFound && [currentDeviceUUID isEqualToString:device.uniqueID]) {
@@ -274,8 +249,7 @@ bool properties_update_device(OBSAVCapture *capture __unused, obs_property_t *pr
 
 bool properties_update_config(OBSAVCapture *capture, obs_properties_t *properties, obs_data_t *settings)
 {
-    AVCaptureDevice *device = [AVCaptureDevice deviceWithUniqueID:[OBSAVCapture stringFromSettings:settings
-                                                                                       withSetting:@"device"]];
+    AVCaptureDevice *device = [OBSAVCapture deviceFromSettings:settings];
 
     obs_property_t *prop_framerate = obs_properties_get(properties, "frame_rate");
     obs_property_t *prop_format = obs_properties_get(properties, "supported_format");
